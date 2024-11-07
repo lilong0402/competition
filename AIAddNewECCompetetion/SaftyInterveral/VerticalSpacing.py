@@ -25,9 +25,13 @@ class HP:
 # longitude  latitude Height 经纬度 + 高度
 # uav_Class hp_class 代表无人机与有人机实体
 def verticalRisk(ux,uy,uz,uLongitude,uLatitude,uHeight,hLongtitude,hLatitude,hHeight,uav_Class,hp_Class):
+    # 数据预处理
+        #去重
+
     # 转为三维笛卡尔坐标
     [uavx_o,uavy_o,uavz_o] = tl.coordinateTransformation(uLongitude,uLatitude,uHeight)
     [hpx_o,hpy_o,hpz_o] = tl.coordinateTransformation(hLongtitude,hLatitude,hHeight)
+
 
     # 将无人机视为质点，以无人机为中心建立坐标系
     [hpx_n,hpy_n,hpz_n] = [hpx_o,hpy_o,hpz_o] - [uavx_o,uavy_o,uavz_o]
