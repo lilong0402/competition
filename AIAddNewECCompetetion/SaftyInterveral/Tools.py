@@ -11,25 +11,70 @@
 import  math
 import numpy as np
 import time as timetime
-from tensorflow.python.distribute.device_util import current
+import sys
 
+
+# 一个用于统计耗时的装饰器
+def decorator(func):
+    def wrapper(*args, **kwargs):
+        current_time = timetime.time()
+        rec = func(*args, **kwargs)
+        # sleep(2)
+        end_time = timetime.time()
+        print("{}  耗时： {} 秒".format(sys._getframe().f_back.f_code.co_name,end_time-current_time))
+        return rec
+    return wrapper
 
 # 坐标转换 将经纬度转为三维笛卡尔坐标
 # L:经度
 # B:纬度
 # H:高度
 # @return 一个包含x,y,z的三维笛卡尔坐标的列表
+@decorator
 def coordinateTransformation(L,B,H):
-    a = 6378137
+    a = 6378137 # 赤道半径
     b = 6356752
     ee = (a**2 - b**2 )/a**2 # 偏心率平方
-    W =  math.sqrt(1 - ee * (math.sin(B) ** 2))
-    N = a / W
+
+    L_new = np.array(L)
+    B_new = np.array(B)
+    H_new = np.array(H)
+
+    W =  np.sqrt(1 - ee * (np.sin(B_new)  ** 2))
+    N = a / W # 计算曲率半径
     # 将角度从度转换为弧度
-    L_rad = math.radians(L)
-    B_rad = math.radians(B)
-    [x,y,z] = [(N+H) * math.cos(B_rad) * math.cos(L_rad) ,(N+H) * math.cos(B_rad) * math.sin(L_rad) ,(N*(1-ee)+H) * math.sin(B_rad)]
+    L_rad = np.radians(L_new)
+    B_rad = np.radians(B_new)
+    [x,y,z] = [(N+H_new) * np.cos(B_rad) * np.cos(L_rad) ,(N+H_new) * np.cos(B_rad) * np.sin(L_rad) ,(N*(1-ee)+H_new) * np.sin(B_rad)]
     return [x,y,z]
+
+# 航迹位置点去重
+# 在处理飞行器的航迹数据时，移除在相同时间内重复的、相同位置的坐标点。些重复点可能是由于数据采集频率高、传感器误差或其他技术原因导致的
+# longtitude,latitude,trackTime , 分别传入经度、维度、时间戳
+# @return 去重后的新坐标
+@decorator
+def trackPositionPointDeweighting(longtitude,latitude,height,trackTime):
+    # 创建一个空列表用于存储去重后的数据
+    unique_longitude = []
+    unique_latitude = []
+    unique_height = []
+    unique_trackTime = []
+
+    # 使用一个集合来记录已处理的 (经度, 纬度 , 高度 , 时间戳) 元组
+    seen_points = set()
+    # 时间复杂度on 空间复杂度 on
+    for lon, lat, het, time in zip(longtitude, latitude,height, trackTime):
+        point = ( lon , lat , het , time )
+        # 如果这个点未出现过，则添加到结果列表和已处理集合
+        if point not in seen_points:
+            unique_longitude.append(lon)
+            unique_latitude.append(lat)
+            unique_height.append(het)
+            unique_trackTime.append(time)
+            seen_points.add(point)
+    # 释放不必要的空间
+    del seen_points
+    return unique_longitude, unique_latitude, unique_trackTime
 
 #print(coordinateTransformation(151.2093,-33.86882,4500))4
 # 计算系统误差
@@ -46,14 +91,27 @@ def overlappingProbability():
 
 #print(sysError(2,2))
 # 构建椭球碰撞盒
-# lx,ly,lz,sx,sy,sz 分别为有人机和无人机的长度、翼展以及高度
+# UAV HP 为无人机与有人机
 # se 为系统误差
 # @return a,b,h 为构建椭球体的三个参数
-def ellipsoidParameter(lx,ly,lz,sx,sy,sz,se):
-    a = 2 * [max(lx,ly,lz) + max(sx,sy,sz)]+se
-    b = 2 * [ly + min(sx,sy)] + se
-    h = 2 * [min(sx,sy,sz) + min(lx,ly,lz)] + se
+def ellipsoidParameter(UAV,HP,se):
+    a = 2 * [max(HP.hLong,HP.hWidth,HP.hHeight) + max(UAV.uLong,UAV.uWidth,UAV.uHeight)]+se
+    b = 2 * [HP.hWidth + min(UAV.uLong,UAV.uWidth)] + se
+    h = 2 * [min(UAV.uLong,UAV.uWidth,UAV.uHeight) + min(HP.hLong,HP.hWidth,HP.hHeight)] + se
     return a,b,h
+# 判断是否在椭球体碰撞模型内
+# a,b,h 为椭球体的三个参数
+# r 球体半径
+# location[x,y,z] 坐标
+def ifInEllipsoid(a,b,c,location):
+    return (location[0] ** 2) / (a ** 2) + (location[1] ** 2) / (b ** 2) + (location[2] ** 2) / (c ** 2) <= 1
+
+# 判断是否在球体内
+# cent 圆心坐标
+# r 球体半径
+# location[x,y,z] 坐标
+def ifInSphere(cent , r , location):
+    return (location[0] - cent[0]) ** 2 + (location[1] - cent[1]) ** 2 +(location[2] - cent[2]) ** 2 < r
 
 # 判断是否在纵向间隔层
 # ux : 纵向方向相对速度
@@ -62,35 +120,10 @@ def ellipsoidParameter(lx,ly,lz,sx,sy,sz,se):
 # location : 有人机的位置
 # hp : 有人机实体
 def lengthwaysSpacing(ux , uy , uz, location , hp ,):
-    for i in location
+    pass
 
 
-# 航迹位置点去重
-# 在处理飞行器的航迹数据时，移除在相同时间内重复的、相同位置的坐标点。些重复点可能是由于数据采集频率高、传感器误差或其他技术原因导致的
-# longtitude,latitude,trackTime , 分别传入经度、维度、时间戳
-# @return 去重后的新坐标
-def trackPositionPointDeweighting(longtitude,latitude,trackTime):
-    # 获取当前系统时间，便于统计耗时
-    current_datatime = timetime.time()
-    # 创建一个空列表用于存储去重后的数据
-    unique_longitude = []
-    unique_latitude = []
-    unique_trackTime = []
 
-    # 使用一个集合来记录已处理的 (经度, 纬度, 时间戳) 元组
-    seen_points = set()
-    # 时间复杂度on 空间复杂度 on
-    for lon, lat, time in zip(longtitude, latitude, trackTime):
-        point = (lon, lat, time)
-        # 如果这个点未出现过，则添加到结果列表和已处理集合
-        if point not in seen_points:
-            unique_longitude.append(lon)
-            unique_latitude.append(lat)
-            unique_trackTime.append(time)
-            seen_points.add(point)
-    # 释放不必要的空间
-    del seen_points
-    print("数据去重共耗时 : {} 秒".format(timetime.time() - current_datatime) )
-    return unique_longitude, unique_latitude, unique_trackTime
+
 
 
